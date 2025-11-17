@@ -1,0 +1,51 @@
+1. 몽고디비
+- mongoDB : 자바스크립트 문법 사용
+  > mongoDB는 NoSQL의 대표적인 데이터베이스
+  
+
+2. NoSQL(몽고디비) vs SQL(MySQL)
+1) NoSQL:
+  - 고정된 테이블 X
+  - JOIN 기능 X
+  - 확장성과 가용성 good
+2) MySQL:
+  - 고정된 테이블 Object
+  - JOIN 기능 O
+  - 안정성, 일관성
+
+
+4. 데이터베이스 및 컬렉션 생성하기
+- 몽고디비 프롬프트에 접속한 후 진행
+- 데이터베이스 만드는 명령어 : use [데이터베이스명]
+- 데이터베이스 목록을 확인하는 명령어 : show dbs
+- 현재 사용 중인 데이터베이스 확인 : db
+- 컬렉션 생성 : db.createCollection
+- 생성한 컬렉션 목록 확인 : show collections
+ 
+
+5. CRUD 작업하기
+1) CREATE(생성)
+- 자바스크립트 문법 사용
+  > 자바스크립트의 자료형을 따른다. Date, Binary Data, ObjectId, Int, Long, Decimal, Timestamp, JavaScript 등의 자료형이 있다. 
+- 다큐먼트 생성 : db.컬렉션명.insertOne(다큐먼트) 
+2) Read(조회)
+- 다큐먼트 조회 : db.users.find({})
+- 특정 필드만 조회 : db.users.find({}, { 필드 내용 })
+3) Update(수정)
+- 데이터 수정하기 : db.users.updateOne({ 수정할 다큐먼트 지정 }, { 수정할 내용 })
+5) Delete(삭제)
+- 데이터 삭제 :  db.users.deleteOne({})
+
+
+6. 몽구스 사용하기
+- 스키마 기반 데이터 모델 정의 가능
+- 프로미스 문법, 가독성 높은 쿼리 빌더 지원
+- JOIN 기능을 populate 메서드로 보완 
+
+1) 몽고디비 연결하기
+- 몽고디비는 주소를 사용해 연결
+  > 주소 형식 : mongodb://[username:password@]host[:port][/[database][?options]]
+2) 스키마 정의하기
+3) 쿼리 수행하기
+
+
