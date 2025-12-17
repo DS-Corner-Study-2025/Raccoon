@@ -1,0 +1,828 @@
+1. API 서버 이해하기
+: API 란?
+
+  - (Application Programming Interface)의 약자
+
+  - 다른 애플리케이션에서 현재 프로그램의 기능을 사용할 수 있게 허용하는 접점
+
+
+
+1.1. 웹 API
+
+: 다른 웹 서비스의 기능을 사용하거나 자원을 가져올 수 있는 창구
+
+: 다른 프로그램에서 현재 프로그램의 기능을 사용할 수 있게 허용함
+
+
+
+1.2. 웹 API 서버
+
+ : 서버에 API를 올려서 URL을 통해 접근할 수 있게 만든 것
+
+
+
+1.3. 크롤링(crawling)
+
+: 웹 사이트가 자체적으로 제공하는 API가 없거나 API 이용에 제한이 있을 때 사용하는 기술
+
+: 웹 사이트의 정보를 일정 주기로 수집해 자체적으로 가공
+
+: 도메인/robots.txt에 접속하여 웹 사이트가 어떤 페이지의 크롤링을 허용하는지 확인 가능
+
+: 주기적으로 크롤링을 당하면 서버에 무리 -> 공개해도 되는 정보들은 API를 통해 가져가게 하기
+
+
+
+2. 프로젝트 구조 가지기
+2.1. nodebird-api 폴더를 만든 후 package.json 파일을 생성
+
+{
+	"name": "nodebird-api",
+	"version": "0.0.1",
+	"description": "NodeBird API 서버",
+	"main": "app.js",
+	"scripts": {
+		"start": "nodemon app",
+		"test": "echo \"Error: no test specified\" && exit 1"
+    },
+	"author": "Zero Cho",
+	"license": "ISC",
+	"dependencies": {
+		"bcrypt": "^5.0.0",
+		"cookie-parser": "^1.4.5",
+		"dotenv": "^16.0.0",
+		"express": "^4.17.1",
+		"express-session": "A1.17.1",
+		"morgan": "^1.10.0",
+		"mysql2":, "^2.1.0",
+		"nunjucks": "^3.2.1",
+		"passport": "^0.5.2",
+		"passport-kakao": "^1.0.1",
+		"passport-local": "^1.0.0",
+		"sequelize": "^6.0.0",
+		"uuid":"^8.3.2"   # 1) 고유한 랜덤 문자열을 만들어내는 데 사용하는 uuid 패키지 추가
+	},
+	"devDependencies": {
+	"nodemon": "^2.0.3"
+    }
+   }
+   
+   # 2) npm i 명령으로 package.json에 적힌 패키지 설치
+
+
+2.2. NodeBird에서 config, models, passport, middle wares 폴더-와 내용물을 복사해 nodebird-api 폴더에 붙여 넣기
+
+
+
+2.3. 에러를 표시하는 error.html과 app.js 작성
+
+<h1>{{message}}</h1>
+<h2>{{error.status}}</h2>
+<pre>{{error.stack}}</pre>
+
+
+2.4. 도메인 모델 추가
+
+const Sequelize = require('sequelize');
+
+class Domain extends Sequelize.Model {
+    static initiate(sequelize) {
+        Domain.init({
+            host: { # 인터넷 주소 
+                type: Sequelize.STRING(80),
+                allowNull: false,
+            },
+            type: { # 도메인 종류 
+                type: Sequelize.ENUM('free', 'premium'), 
+                # ENUM 속성 : free or premium 중 하나
+                allowNull: false,
+            },
+            clientSecret: { # 클라이언트 비밀 키 (요청한 도메인까지 일치해야 요청을 보낼 수 있음)
+                type: Sequelize.UUID, # 충돌 가능성이 매우 적은 랜덤한 문자열, UUID
+                allowNull: false,
+            },
+        }, {
+            sequelize,
+            timestamps: true,
+            paranoid: true,
+            modelName: 'Domain',
+            tableName: 'domains',
+        });
+    }
+
+    static associate(db) {
+        db.Domain.belongsTo(db.User);   
+    }
+};
+
+module.exports = Domain;
+
+
+2.5. 로그인하는 화면 제작
+
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>API 서버 로그인</title>
+        <style>
+        .input-group label { width: 200px; display: inline-block; }
+        </style>
+    </head>
+    <body>
+        # 로그인한 사용자 -> 도메인 등록 화면
+        {% if user and user.id %}
+        <span class="user-name">안녕하세요! {{user.nick}}님</span>
+        <a href="/auth/logout">
+            <button>로그아웃</button>
+        </a>
+        <fieldset>
+            <legend>도메인 등록</legend>
+            <form action="/domain" method="post">
+            <div>
+                <label for="type-free">무료</label>
+                <input type="radio" id="type-free" name="type" value="free">
+                <label for="type-premium">프리미엄</label>
+                <input type="radio" id="type-premium" name="type" value="premium">
+            </div>
+            <div>
+                <label for="host">도메인</label>
+                <input type="text" id="host" name="host" placeholder="ex) zerocho.com">
+            </div>
+            <button>저장</button>
+            </form>
+        </fieldset>
+        <table>
+            <tr>
+            <th>도메인 주소</th>
+            <th>타입</th>
+            <th>클라이언트 비밀키</th>
+            </tr>
+            {% for domain in domains %}
+            <tr>
+                <td>{{domain.host}}</td>
+                <td>{{domain.type}}</td>
+                <td>{{domain.clientSecret}}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        
+        # 로그인하지 않은 사용자 -> 로그인 창
+        {% else %}
+        <form action="/auth/login" id="login-form" method="post">
+            <h2>NodeBird 계정으로 로그인하세요.</h2>
+            <div class="input-group">
+            <label for="email">이메일</label>
+            <input id="email" type="email" name="email" required autofocus>
+            </div>
+            <div class="input-group">
+            <label for="password">비밀번호</label>
+            <input id="password" type="password" name="password" required>
+            </div>
+            <div>회원가입은 localhost:8001에서 하세요.</div>
+            <button id="login" type="submit">로그인</button>
+        </form>
+        <script>
+            window.onload = () => {
+            if (new URL(location.href).searchParams.get('error')) {
+                alert(new URL(location.href).searchParams.get('error'));
+            }
+            };
+        </script>
+        {% endif %}
+    </body>
+</html>
+
+
+2.6. 서버 실행하기
+
+: http://localhost:8002로 접속
+
+
+
+3. JWT(JSON Web Token)  토큰으로 인증하기
+
+
+3.1. JWT 란?
+
+  - JSON 형식의 데이터를 저장하는 토큰
+
+  - 내용을 볼 수 있기에 JWT에는 민감한 내용을 넣으면 안됨
+
+
+
+3.2. JWT의 구성 세 가지
+
+1) 헤더
+
+  - 토큰 종류와 해시 알고리즘 정보
+
+2) 페이로드
+
+  - 토큰의 내용물이 인코딩된 부분
+
+3) 시그니처
+
+  - 일련의 문자열로, 토큰이 변조되었는지 여부 확인 가능
+
+
+
+3.3. 웹 서버에 JWT 토큰 인증 과정 구현하기
+
+1) JWT 모듈 설치
+
+npm i jsonwebtoken
+
+
+2) JWT 사용해 API 만들기
+
+
+
+3) 서버에 연결
+
+...
+dotenv.config();
+
+const v1 = require('./routes/v1');
+
+const authRouter = require('./routes/auth');
+... 
+app.use(passport.session());
+
+app.use('/v1', v1);
+
+app.use('/auth', authRouter);
+...
+
+
+4. 다른 서비스 호출하기
+4.1. nodebird-api의 API를 통해 데이터를 가져오는 것이 주목적인 서버
+
+# nodecat/package.json
+
+{
+    "name": "nodecat",
+    "version": "0.0.1",
+    "description": "NodeBird 2차 서비스",
+    "main": "app.js",
+    "scripts": {
+        "start": "nodemon app"
+    },
+    "author": "Zero Cho",
+    "license": "ISC",
+    "dependencies": {
+        "axios": "^0.27.2",
+        "cookie-parser": "^1.4.6",
+        "dotenv": "^16.0.1",
+        "express": "^4.18.1",
+        "express-session": "^1.17.3",
+        "morgan": "^1.10.0",
+        "nunjucks": "^3.2.3"
+    },
+    "devDependencies": {
+        "nodemon": "^2.0.16"
+    }
+}
+
+#  npm i 명령으로 package.json에 적힌 패키지를 설치
+
+
+
+
+4.2. 서버 파일과 에러를 표시할 파일 생성
+
+# nodecat/app.js
+
+const express = require('express');
+const morgan = require('morgan');
+const cookieParser = require('cookie-parser');
+const session = require('express-session');
+const nunjucks = require('nunjucks');
+const dotenv = require('dotenv');
+
+dotenv.config();
+const indexRouter = require('./routes');
+
+const app = express();
+app.set('port', process.env.PORT || 4000);
+app.set('view engine', 'html');
+nunjucks.configure('views', {
+	express: app,
+	watch: true,
+	});
+
+app.use(morgan('dev'));
+app.use(cookieParser(process.env.COOKIE_SECRET));
+app.use(session({
+	resave: false,
+	saveUninitialized: false,
+	secret: process.env.COOKIE_SECRET,
+	cookie: {
+		httpOnly: true,
+		secure: false,
+	},
+}));
+
+app.use('/', indexRouter);
+
+app.use((req, res, next) => {
+	const error = new Error(`${req.method} ${req.url} 라우터가 없습니다.`);
+	error.status = 404;
+	next(error);
+});
+
+app.use((err, req, res, next) => {
+	res.locals.message = err.message;
+	res.locals.error = process.env.NODE_ENV !== 'production' ? err : {};
+	res.status(err.status || 500);
+	res.render('error');
+});
+
+app.listen(app.get('port'), () => {
+	console.log(app.get('port'), '번 포트에서 대기 중');
+});
+# nodecat/views/error.html 
+
+<h1>{{message}}</h1>
+<h2>{{error.status}}</h2>
+<pre>{{error.stack}}</pre>
+
+
+4.3. 사용자 인증 진행을 테스트하는 라우터 제작
+
+# nodecat/.env
+
+COOKIE_SECRET=nodecat
+CLIENT_SECRET= ------------------
+# nodecat/routes/index.js
+
+const express = require('express');
+const { test } = require('../controllers');
+
+const router = express.Router();
+
+// POST /test
+router.get('/test', test);
+
+module.exports = router;
+# nodecat/controllers/index.js
+
+const axios = require('axios');
+
+exports.test = async (req, res, next) => { # 토큰 테스트 라우터
+	try {
+		if (!req.session.jwt) { # 세션에 토큰이 없으면 토큰 발급 시도
+			const tokenResult = await axios.post('http://localhost:8002/v1/token', {
+				clientSecret: process.env.CLIENT_SECRET,
+			});
+		if (tokenResult.data?.code === 200) { # 토큰 발급 성공
+			req.session.jwt = tokenResult.data.token; # 세션에 토큰 저장
+		} else { # 토큰 발급 실패
+			return res.json(tokenResult.data); # 발급 실패 사유 응답
+		}
+	}
+      # 발급받은 토큰 테스트
+	const result = await axios.get('http://localhost:8002/v1/test', {
+		headers: { authorization: req.session.jwt }, # 발급받은 토큰으로 토큰이 유효한지 테스트
+	});
+	return res.json(result.data);
+} catch (error) {
+	console.error(error);
+	if (error.response?.status === 419) { # 토큰 만료 시
+		return res.json(error.response.data);
+	}
+	return next(error);
+	}
+};
+
+
+* nodebird-api(localhost:8002)와 nodecat(localhost:4000) 실행 후 localhost:4000/test로 접속하면 토큰 내용이 표시됨
+
+
+
+5. SNS API 서버 만들기
+: 다시 API 제공자(nodebird-api)의 입장으로 돌아와서 나머지 API 라우터를 완성
+
+
+
+# nodebird-api/routes/v1.js
+
+const express = require('express');
+
+const { verifyToken } = require('../middlewares');
+const { createToken, tokenTest, getMyPosts, getPostsByHashtag } = require('../controllers/v1');
+
+const router = express.Router();
+...
+
+# GET /v1/posts/my : 내가 올린 포스트를 가져오는 라우터 
+router.get('/posts/my', verifyToken, getMyPosts);
+
+# GET /v1/posts/hashtag/:title : 해시태그 검색 결과를 가져오는 라우터
+router.get('/posts/hashtag/:title', verifyToken, getPostsByHashtag);
+
+module.exports = router;
+# nodebird-api/controllers/v1.js 
+
+const jwt = require('jsonwebtoken');
+const { Domain, User, Post, Hashtag } = require('../models');
+...
+exports.tokenTest = (req, res) => {
+	res.json(res.locals.decoded);
+};
+
+exports.getMyPosts = (req, res) => {
+	Post.findAll({ where: { userId: res.locals.decoded.id } })
+	.then((posts) => {
+		console.log(posts);
+		res.json({
+			code: 200,
+			payload: posts,
+		});
+	})
+	.catch((error) => {
+		console.error(error);
+		return res.status(500).json({
+			code: 500,
+			message: '서버 에러',
+		});
+	});
+};
+
+exports.getPostsByHashtag = async (req, res) => {
+	try {
+		const hashtag = await Hashtag.findOne({ where: { title: req.params.title } });
+		if (!hashtag) {
+			return res.status(404).json({
+				code: 404,
+				message: '검색 결과가 없습니다',
+			});
+		}
+		const posts = await hashtag.getPosts();
+		return res.json({
+			code:200,
+			payload:posts,
+		});
+	} catch(error){
+		console.error(error);
+		return res.status(500).json({
+			code:500,
+			message:'서버 에러',
+		});
+	}
+};
+# 사용하는 측에도 API를 이용하는 코드 추가
+# nodecat/routes/index.js 
+
+const express = require('express');
+
+const { searchByHashtag, getMyPosts } = require('../controllers');
+
+const router = express.Router();
+
+router.get('/myposts', getMyPosts);
+
+router.get('/search/:hashtag', searchByHashtag);
+
+module.exports = router;
+COOKIE_SECRET=nodecat
+CLIENT_SECRET= --------------------
+API_URL=http://localhost:8002/v1
+ORIGIN=http://localhost:4000
+# nodecat/controllers/index.js
+
+const axios = require('axios');
+
+const URL = process.env.API_URL;
+# 요청의 헤더 origin 값을 localhost:4000으로 설정 
+axios.defaults.headers.origin = process.env.ORIGIN; 
+
+# request 함수 : NodeBird API에 요청을 보내는 함수 
+const request = async (req, api) => {
+    try {
+        # 세션에 토큰이 없으면 clientSecret을 사용해 토큰 발급 요청 보내기 
+        if (!req.session.jwt) { 
+        const tokenResult = await axios.post(`${URL}/token`, {
+            clientSecret: process.env.CLIENT_SECRET,
+        });
+        req.session.jwt = tokenResult.data.token; # 토큰은 세션에 저장 
+        }
+        # 발급받은 후에는 토큰을 이용해 API 요청을 조냄 
+        return await axios.get(`${URL}${api}`, {
+        headers: { authorization: req.session.jwt },
+        }); 
+    } catch (error) {
+        # 토큰이 만료되면 419 에러 -> 토큰 지우고 재발급 
+        if (error.response?.status === 419) { 
+            delete req.session.jwt;
+            return request(req, api);
+        } # 419 외의 다른 에러면
+        throw error;
+    }
+};
+
+# GET /myposts : API를 사용해 자신이 작성한 포스트를 JSON 형식으로 가져오는 라우터 
+exports.getMyPosts = async (req, res, next) => {
+    try {
+        const result = await request(req, '/posts/my');
+        res.json(result.data);
+    } catch (error) {
+        console.error(error);
+        next(error);
+    }
+};
+
+# GET /search/:hashtag : API를 사용해 해시태그를 검색하는 라우터 
+exports.searchByHashtag = async (req, res, next) => {
+    try {
+        const result = await request(
+        req, `/posts/hashtag/${encodeURIComponent(req.params.hashtag)}`,
+        );
+        res.json(result.data);
+    } catch (error) {
+        if (error.code) {
+        console.error(error);
+        next(error);
+        }
+    }
+};
+
+
+* localhost:4000/myposts에 접속하면 게시글 목록을, 
+
+  localhost:4000/search/노드에 접속하면 노드 해시태그가 달린 게시글 목록을 JSON 형식으로 확인할 수 있다. 
+
+
+
+6. 사용량 제한 구현하기
+: 인증된 사용자더라도 과도한 API 사용은 API 서버에 무리가 감
+
+  -> 일정 기간 내에 API를 사용할 수 있는 횟수를 제한해 서버의 트래픽을 줄이는 것이 좋음
+
+  -> express-rate-limit 패키지는 이러한 기능을 제공
+
+
+
+6.1. express-rate-limit 패키지 설치
+
+npm i express-rate-limit
+
+
+6.2. apiLimiter 미들웨어와 deprecated 미들웨어 추가
+
+# nodebird-api/middlewares/index.js
+
+const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
+...
+exports.apiLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1분
+    max: 1,
+    handler: function (req, res) {
+        res.status(this.statusCode).json({
+            code: this.statusCode, // 기본값 429
+            message: '1분에 한 번만 요청할 수 있습니다.'
+        });
+    }
+});
+
+exports.deprecated = (req, res) => {
+    res.status(410).json({
+        code: 410,
+        message: '새로운 버전이 나왔습니다. 새로운 버전을 사용하세요.'
+    });
+};
+
+
+6.3. 사용량 제한이 추가되었으므로 새로운 v2 라우터 생성
+
+# 라우터에 사용량 제한 미들웨어 추가 
+# nodebird-api/routes/v2.js 
+
+const express = require('express');
+
+const { verifyToken, apiLimiter } = require('../middlewares');
+const { createToken, tokenTest, getMyPosts, getPostsByHashtag } = require('../controllers/v2');
+
+const router = express.Router();
+
+// POST /v2/token
+router.post('/token', apiLimiter, createToken);
+
+// POST /v2/test
+router.get('/test', apiLimiter, verifyToken, tokenTest);
+
+// GET /v2/posts/my
+router.get('/posts/my', apiLimiter, verifyToken, getMyPosts);
+
+// GET /v2/posts/hashtag/:title
+router.get('/posts/hashtag/:title', apiLimiter, verifyToken, getPostsByHashtag);
+
+module.exports = router;
+# nodebird-api/controllers/v2.js
+
+...
+
+exports.createToken = async (req, res) => {
+    const { clientSecret } = req.body;
+    try {
+        const domain = await Domain.findOne({
+        	where: { clientSecret },
+        	include: {
+            	model: User,
+            	attribute: ['nick', 'id'],
+        	},
+        });
+        if (!domain) {
+        	return res.status(401).json({
+            	code: 401,
+            	message: '등록되지 않은 도메인입니다. 먼저 도메인을 등록하세요',
+        	});
+        }
+        const token = jwt.sign({
+        	id: domain.User.id,
+        	nick: domain.User.nick,
+        }, process.env.JWT_SECRET, {
+        	expiresIn: '30m', // 유효 기간을 30분으로 연장 
+        	issuer: 'nodebird',
+        });
+        return res.json({
+        	code: 200,
+        	message: '토큰이 발급되었습니다',
+        	token,
+        });
+    } catch (error) {
+    	console.error(error);
+        return res.status(500).json({
+        	code: 500,
+            message: '서버 에러',
+        });
+    }
+};
+
+...
+# v1 라우터를 사용할 때는 경고 메시지 
+# nodebird-api/routes/v1.js 
+
+const express = require('express');
+
+const { verifyToken, deprecated } = require('../middlewares');
+const { createToken, tokenTest, getMyPosts, getPostsByHashtag } = require('../controllers/v1');
+
+const router = express.Router();
+
+router.use(deprecated);
+
+// POST /v1/token
+router.post('/token', createToken);
+
+...
+
+
+6.4 새로 만든 라우터를 서버와 연결 
+
+# nodebird-api/app.js
+
+...
+const v1 = require('./routes/v1');
+const v2 = require('./routes/v2');
+const authRouter = require('./routes/auth');
+...
+app.use('/v1', v1);
+app.use('/v2', v2);
+app.use('/auth', authRouter);
+...
+
+
+6.5. 사용자 입장(NodeCat)으로 돌아와서 새로 생긴 버전 호출
+
+# nodecat/.env
+
+...
+API_URL=http://localhost:8002/v2
+...
+* 버전을 v2로 바꾸지 않고 v1을 계속 사용한다면 410 에러, 1분에 한 번보다 더 많이 호출하면 429 에러가 발생
+
+
+
+7. CORS 이해하기
+7.1. NodeCat의 프런트에서 nodebird-api의 서버 API를 호출하는 경우
+
+1) 프런트 화면을 렌더링하는 라우터
+
+# nodecat/routes/index.js
+
+const express = require('express');
+const { searchByHashtag, getMyPosts, renderMain } = require('../controllers');
+
+const router = express.Router();
+
+router.get('/myposts', getMyPosts);
+router.get('/search/:hashtag', searchByHashtag);
+router.get('/', renderMain);
+
+module.exports = router;
+# nodecat/controllers/index.js 
+
+...
+exports.renderMain = (req, res) => {
+    res.render('main', {key: process.env.CLIENT_SECRET});
+};
+
+
+2) 프런트 화면
+
+# nodecat/views/main.html
+
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>프론트 API 요청</title>
+    </head>
+    <body>
+    <div id="result"></div>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script>
+        axios.post('http://localhost:8002/v2/token', {
+        clientSecret: '{{key}}',
+        })
+        .then((res) => {
+            document.querySelector('#result').textContent = JSON.stringify(res.data);
+        })
+        .catch((err) => {
+            console.error(err);
+        });
+    </script>
+    </body>
+</html>
+
+
+7.2. CORS(Cross-Origin Resource Sharing) 
+: 요청을 보내는 클라이언트와 요청을 받는 서버의 도메인이 일치하지 않아, 요청이 차단되는 문제가 발생
+: 브라우저에서 서버로 요청을 보낼 때만 발생하고, 서버에서 서버로 요청을 보낼 때는 발생하지 않음
+
+7.3. OPTIONS 메서드
+: 실제 요청을 보내기 전에 서버가 요청의 도메인, 헤더와 메서드 등을 허용하는지 체크하는 역할
+
+7.4. CORS 문제 해결하기 
+: 응답 헤더에 Acess-Control-Allow-Origin이라는 헤더를 삽입
+  - 이 헤더는 클라이언트 도메인의 요청을 허락하겠다는 의미를 지닌 것으로, cors 패키지를 통해 적용할 수 있음 
+
+1) 응답은 API 서버가 보내는 것이므로 NodeBird API에 cors 모듈 설치
+
+npm i cors
+
+2) cors 패키지를 v2.js에 적용하면, 응답에 Access-Control-Allow-Origin 헤더가 추가됨
+
+# nodebird-api/routes/v2.js
+
+const express = require('express');
+const cors = require('cors');
+
+const { verifyToken, apiLimiter } = require('../middlewares');
+const { createToken, tokenTest, getMyPosts, getPostsByHashtag } = require('../controllers/v2');
+
+const router = express.Router();
+router.use(cors({ # router.use : v2의 모든 라우터에 적용
+	credentials: true, # 다른 도메인 간에 쿠키 공유 
+}));
+...
+
+
+3) 호스트와 비밀 키가 모두 일치할 때만 CORS를 허용하게 수정
+
+# nodebird-api/routes/v2.js 
+
+const express = require('express');
+
+const { verifyToken, apiLimiter, corsWhenDomainMatches } = require('../middlewares');
+const { createToken, tokenTest, getMyPosts, getPostsByHashtag } = require('../controllers/v2');
+
+const router = express.Router();
+
+router.use(corsWhenDomainMatches);
+...
+# nodebird-api/middlewares/index.js 
+
+const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
+const cors = require('cors');
+const {Domain} = require('../models');
+
+...
+
+exports.corsWhenDomainMatches = async (req, res, next) => {
+    const domain = await Domain.findOne({
+        where: { host: new URL(req.get('origin')).host },
+    });
+    if (domain) {
+        cors({ 
+            origin: req.get('origin'),
+            credentials: true,
+        })(req, res, next);
+    } else {
+        next();
+    }
+};
+
+
