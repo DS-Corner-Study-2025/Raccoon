@@ -1,0 +1,294 @@
+서비스 운영을 위한 패키지
+미들웨어들을 배포 환경으로 설정
+
+//app.js
+...
+sequelize.sync({ force: false })
+  .then(() => {
+    console.log('데이터베이스 연결 성공');
+  })
+  .catch((err) => {
+    console.error(err);
+  });
+
+if (process.env.NODE_ENV === 'production') {
+  app.enable('trust proxy');
+  app.use(morgan('combined'));
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+      crossOriginResourcePolicy: false,
+    }),
+  );
+  app.use(hpp());
+} else {
+  app.use(morgan('dev'));
+}
+app.use(express.static(path.join(__dirname, 'public')));
+...
+- process.env.NODE_EW는 배포 환경인지 개발 환경인지를 판단할 수 있는 환경 변수
+
+- combined 모드는 dev 모드에 비해 더 많은 사용자 정보를 로그로 남기므로 추후 버그를 해결할 때 더 유용하게 사용할 수 있
+
+
+
+
+
+express-session을 배포 환경으로 설정
+
+//app.js
+...
+app.use(cookieParser(process.env.COOKIE_SECRET));
+const sessionOption = {
+  resave: false,
+  saveUninitialized: false,
+  secret: process.env.COOKIE_SECRET,
+  cookie: {
+    httpOnly: true,
+    secure: false,
+  },
+  store: new RedisStore({ client: redisClient }),
+};
+if (process.env.NODE_ENV === 'production') {
+  sessionOption.proxy = true;
+  // sessionOption.cookie.secure = true;
+}
+app.use(session(sessionOption));
+app.use(passport.initialize());
+...
+- 배포 환경일 때는 proxy와 cookie.secure를 true로 바꿈
+
+
+
+
+
+데이터베이스를 배포 환경으로 설정
+
+//config/config.js
+require('dotenv').config();
+
+module.exports = {
+  development: {
+    username: 'root',
+    password: process.env.SEQUELIZE_PASSWORD,
+    database: 'nodebird',
+    host: '127.0.0.1',
+    dialect: 'mysql',
+  },
+  test: {
+    username: "root",
+    password: process.env.SEQUELIZE_PASSWORD,
+    database: "nodebird_test",
+    host: "127.0.0.1",
+    dialect: "mysql"
+  },
+  production: {
+    username: 'root',
+    password: process.env.SEQUELIZE_PASSWORD,
+    database: 'nodebird',
+    host: '127.0.0.1',
+    dialect: 'mysql',
+    logging: false,
+  },
+};
+- 시퀄라이즈에서 비밀번호가 하드 코딩 되어있기 때문에 json을 지우고 js를 생성
+
+- 이때 데이터베이스 비밀번호는 .env 파일에 입력
+
+
+
+
+
+cross-env 패키지를 사용하여 동적으로 process.env(환경 변수)를 변경
+
+//package.json
+{
+  "name": "nodebird",
+  "version": "0.0.1",
+  "description": "익스프레스로 만드는 SNS 서비스",
+  "main": "server.js",
+  "scripts": {
+    "start": "cross-env NODE_ENV=production PORT=80 pm2 start server.js -i 0",
+    "dev": "nodemon server",
+    "test": "jest"
+  },
+  ...
+- 서버 실행을 위한 npm 스크립트를 두 개로 나눔
+
+  > npm start(배포 환경), npm run dev(개발 환경)
+
+
+
+
+
+XSS 공격을 막기 위한 sanitize-html 패키지
+
+CSRF 공격을 막기 위한 csurf 패키지
+
+const sanitizeHtml=require('sanitize-html');
+
+const html="<script>location.href='https://gilbut.co.kr'</script>";
+console.log(sanitizeHtml(html));
+ - XSS는 악의적인 사용자가 사이트에 스크립트를 삽입하는 공격
+
+  > sanitize-html 패키지로 허용하지 않는 태그나 스크립트를 제거
+
+- CSRF는 사용자가 의도치 않게 공격자가 의도한 행동을 하게 만드는 공격
+
+  > 상황에 따라 올바른 CSRF 토큰을 사용하여, 공격을 막기 위해 내가 한 행동이 맞다는 사실을 인증하게 함
+
+
+
+
+
+pm2
+pm2는 원활한 서버 운영을 위한 패키지
+
+  - 가장 큰 기능은 서버가 에러로 인해 꺼졌을 때 서버를 다시 켜줌
+
+  - 멀티 프로세싱을 지원해 노드 프로세스 개수를 한 개 이상으로 늘릴 수 있다
+
+  - 그러나 멀티 스레딩이 아니므로 서버의 메모리 같은 자원을 공유하지는 못함
+
+    > 세션을 공유할 수 있게 해주기 위해 멤케시드(Memcached)나 레디스(Redis) 같은 서비스를 이용
+
+ 
+
+  - pm2 설치 : npm i pm2
+
+  - pm2 사용 : npm start 스크립트 수정 
+
+    > start 부분을 "cross-env NODE_ENV=prodution PORT=80 pm2 start server.js" 로
+
+    > 기존 nodemon 대신 pm2 사용하게 됨
+
+  - 백그라운드에서 돌고 있는 노드 프로세스 확인 : npx pm2 list
+
+  - 현재 프로세스 모니터링 : npx pm2 monit
+
+  - pm2 프로세스 종료 : npx pm2 kill
+
+  - 서버 재시작 : npx pm2 reload all
+
+
+
+
+
+winston
+실제 서버를 운영할 때 console.log와 console.error를 대체하기 위한 모듈
+
+
+
+console 객체의 메서드들은 언제 호출되었는지 파악하기 힘듦 + 서버가 종료되는 순간 로그들도 사라져버림
+
+  > 이와 같은 상황을 방지하기 위해 로그를 파일이나 다른 데이터 베이스에 저장하는 winston을 사용
+
+
+
+npm i winston 설치
+
+//logger.js
+const { createLogger, format, transports } = require('winston');
+
+const logger = createLogger({
+  level: 'info',
+  format: format.json(),
+  transports: [
+    new transports.File({ filename: 'combined.log' }),
+    new transports.File({ filename: 'error.log', level: 'error' }),
+  ],
+});
+
+if (process.env.NODE_ENV !== 'production') {
+  logger.add(new transports.Console({ format: format.simple() }));
+}
+
+module.exports = logger;
+- winston 패키지의 createLogger 메서드로 logger를 만듦
+
+- 인수 logger에 대한 설정으로 level, format, transports 등이 있음
+
+- logger 객체를 만들어 다른 파일에 사용할 수 있음 (info, warn, error 등의 메서드)
+
+
+
+
+
+helmet, hpp
+서버의 각종 취약점을 보완해주는 패키지
+
+익스프레스 미들웨어로서 사용 가능
+
+npm i helmet hpp (개발 환경에서는 사용할 필요가 없으므로 배포 환경일 때만 적용하면 됨.)
+
+
+
+
+
+connect-redis
+멀티 프로세스 간 세션 공유를 위해 레디스와 익스프레스를 연결해주는 패키지
+
+기존에는 서버가 종료되어 메모리가 날아가면 접속자들의 로그인이 모두 풀려버림
+
+  > 이를 해결하기 위해 세션 아이디와 실제 사용자 정보를 데이터베이스에 저장
+
+  > npm i redis connect-redis  (레디스를 사용하려면 connect-redis 패키지뿐만 아니라 레디스 데이터베이스를 설치해야 함)
+
+  > 세션 정보가 메모리 대신 레디스에 저장되어 로그인 후 서버를 껐다 켜도 로그인이 유지
+
+
+
+
+
+깃과 깃허브 사용하기
+깃(Git)
+
+  - 분산형 버전 관리 시스템
+
+  - 깃은 하나의 컴퓨터에서 코드를 관리하는 데 사용
+
+깃허브(GitHub)
+
+  - 깃으로부터 업로드한 소스 코드를 서버에 저장할 수 있는 원격 저장소
+
+  - 깃허브에 소스 코드를 업로드하면 여러 사람이 코드를 공통으로 관리할 수 있음
+
+
+
+1. 깃 설치하기
+- 깃을 설치한 다음 제대로 설치되었는지 확인하기 위해 콘솔에 git --version 로 깃 버전을 확인
+
+//.gitignore
+node_modules
+uploads
+*.log
+coverage
+
+
+2. 깃허브 사용하기
+
+- 회원가입, 로그인 후 리포지터리를 생성
+
+> 소스 코드를 깃에 추가하기 위해 git init
+
+> git add . (모든 파일을 추가하겠다는 의미)
+
+> git config --global user.email " "
+
+> git config --global user.name " "
+
+> git commit -m " " 
+
+> git push origin master (코드를 깃허브에 업로드)
+
+
+
+
+
+AWS / GCP
+서비스를 클라우드에 배포
+
+아마존의 클라우드 서비스 = AWS
+
+구글의 클라우드 서비스 = GCP
