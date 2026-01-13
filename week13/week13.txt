@@ -1,0 +1,49 @@
+타입스크립트 : 자바스크립트에 명시적으로 타입이 추가된 언어
+- 노드는 자바스크립트만 실행할 수 있으므로, 타입스크립트 코드를 자바스크립트 코드로 변환해야만 실행 가능
+
+
+
+{
+  "compilerOptions": {
+    "target": "es2016",                          /* Set the Javascript language */  
+    "module": "commonjs",                        /* Specify what module code is */
+    "esModuleInterop": true,                     /* Emit additional JavaScript to */ 
+    "forceConsistentCasingInFileNames": true,    /* Ensure that casing is correct */
+    "strict": true,                              /* Enable all strict type-checking */
+    "skipLibCheck": true                         /* Skip type checking all .d.ts files */
+  }
+}
+
+target : 결과물의 문법을 어떤 버전의 자바스크립트 코드로 만들어낼지 정함(es2016 : 2016년 자바스크립트 버전)
+module : 결과물의 모듈 시스템을 어떤 종류로 할지 정함. 노드라면 commonjs를 하면 되고, 최신 브라우저에서는 es2022를 함
+esModuleInterop : CommonJS 모듈도 ECMAScript 모듈처럼 인식하게 해줌
+forceConsistentCasingInFileNames : true이면 모듈을 import할 때 파일명의 대소문자가 정확히 일치해야 함(리눅스나 맥에서는 파일명 대소문자를 구분하므로 켜두는 것이 좋음)
+strict : 엄격한 타입 검사를 할지 지정
+skipLibCheck : true이면 모든 라이브러리의 타입을 검사하는 대신 내가 직접적으로 사용하는 라이브러리의 타입만 검사해 시간을 아낄 수 있음
+compare.js와 index.ts 파일을 만들어서 자바스크립트와 타입스크립트 비교
+
+
+
+let a: string | number = 'hello'; // 유니온 타이핑
+let arr: string[] = []; // 배열 타이핑
+world?: number; // 선택적 타이핑
+// string || number : 문자열 또는 숫자 타입
+// 속성 이름 뒤에 물음표(?)가 붙어 있으면, 그 속성은 있어도 되고 없어도 되는 속성이라는 뜻
+
+
+
+tsc --noEmit을 수행하면 크게 세 종류의 에러 발생
+1) TS7016 : 설치한 패키지에 타입 정의가 없음
+  - "npm i -D @types/패키지명"을 통해 커뮤니티에서 만든 타입 정의를 설치하기
+2) TS2339 : Error 객체에 status 속성이 없다는 에러와 user 객체에 id 속성이 없음
+  - types 폴더를 만들고 index.d.ts 파일 생성
+  - "import IUser from '../models/user';"
+3) TS2769 : process.env.KAKAO_ID 부분에서 발생
+  - 뒤에 느낌표를 붙이기
+
+ 
+
+실전 개발 시
+1) 수동 import 체제: 자동 로딩 방식은 타입 추론이 어려우므로 모델 등을 하나씩 수동으로 불러오는 방식을 권장
+2) ECMAScript 모듈: 타입스크립트 환경에서는 require 대신 import/export 문법을 사용
+3) 안정성 우선: 서버는 안정성이 생명이므로 개발 편의성보다 에러 방지에 유리한 TS 도입이 필수
